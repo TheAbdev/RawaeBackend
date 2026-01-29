@@ -1,0 +1,3341 @@
+openapi: 3.1.0
+info:
+  title: Rawae Al-Haram API
+  description: |
+    Complete API specification for the Rawae Al-Haram water donation and delivery management system.
+
+    ## Authentication
+    This API uses JWT Bearer token authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    ## User Roles
+    - **admin**: Full system access
+    - **donor**: Can make donations and view donation history
+    - **mosque_admin**: Manages mosque needs and tank images
+    - **auditor**: Can verify donations and access reports
+    - **investor**: Access to impact metrics and funnel data
+    - **logistics_supervisor**: Manages trucks and deliveries
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@rawae-alharam.com
+
+servers:
+  - url: http://localhost:8000/api
+    description: API Base URL
+
+tags:
+  - name: Authentication
+    description: User authentication endpoints
+  - name: Mosques
+    description: Mosque management endpoints
+  - name: Donations
+    description: Donation management endpoints
+  - name: Need Requests
+    description: Water need request endpoints
+  - name: Tank Images
+    description: Tank image upload and management
+  - name: Trucks
+    description: Truck fleet management
+  - name: Deliveries
+    description: Water delivery management
+  - name: Campaigns
+    description: Campaign management
+  - name: Ads
+    description: Advertisement management
+  - name: Content Texts
+    description: Dynamic content text management
+  - name: Dashboard
+    description: Dashboard statistics and activities
+  - name: Reports
+    description: Report generation and export
+  - name: Investor Impact
+    description: Investor metrics and funnel data
+
+paths:
+  # Authentication Routes
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login with username/email and password
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: admin
+              password: admin123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                success: true
+                data:
+                  user:
+                    id: 1
+                    name: Admin User
+                    email: admin@example.com
+                    username: admin
+                    role: admin
+                  token: eyJ0eXAiOiJKV1QiLCJhbGc...
+                  default_route: /dashboard
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Invalid username or password
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new donor account
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: John Doe
+              email: john@example.com
+              username: johndoe
+              password: password123
+              password_confirmation: password123
+              phone: "+966501234567"
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              example:
+                success: true
+                data:
+                  user:
+                    id: 10
+                    name: John Doe
+                    email: john@example.com
+                    username: johndoe
+                    role: donor
+                  token: eyJ0eXAiOiJKV1QiLCJhbGc...
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh authentication token
+      operationId: refreshToken
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+              example:
+                success: true
+                data:
+                  token: eyJ0eXAiOiJKV1QiLCJhbGc...
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout current user
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                success: true
+                message: Logged out successfully
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Request password reset
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+            example:
+              email: user@example.com
+      responses:
+        '200':
+          description: Password reset link sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                success: true
+                message: If the email exists, a password reset link has been sent.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/reset-password:
+    post:
+      tags:
+        - Authentication
+      summary: Reset password with token
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+            example:
+              token: reset-token
+              email: user@example.com
+              password: newpassword123
+              password_confirmation: newpassword123
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                success: true
+                message: Password has been reset successfully.
+        '400':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Invalid or expired reset token.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # Mosques Routes
+  /mosques:
+    get:
+      tags:
+        - Mosques
+      summary: Get list of mosques with filtering and pagination
+      operationId: getMosques
+      parameters:
+        - name: search
+          in: query
+          description: Search by mosque name
+          schema:
+            type: string
+        - name: need_level
+          in: query
+          description: Filter by need level
+          schema:
+            $ref: '#/components/schemas/NeedLevelEnum'
+        - name: min_need_score
+          in: query
+          description: Minimum need score filter
+          schema:
+            type: integer
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          description: Items per page (max 100)
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+        - name: sort_by
+          in: query
+          description: Sort field
+          schema:
+            type: string
+            enum: [need_score, name, created_at]
+            default: need_score
+        - name: sort_order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of mosques
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueListResponse'
+
+    post:
+      tags:
+        - Mosques
+      summary: Create new mosque (Admin only)
+      operationId: createMosque
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMosqueRequest'
+      responses:
+        '201':
+          description: Mosque created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /mosques/{id}:
+    get:
+      tags:
+        - Mosques
+      summary: Get single mosque details
+      operationId: getMosque
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Mosque details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Mosques
+      summary: Update mosque (Admin only)
+      operationId: updateMosque
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMosqueRequest'
+      responses:
+        '200':
+          description: Mosque updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags:
+        - Mosques
+      summary: Delete mosque (Admin only)
+      operationId: deleteMosque
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Mosque deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                success: true
+                message: Mosque deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Donations Routes
+  /donations:
+    get:
+      tags:
+        - Donations
+      summary: Get list of donations with filtering
+      operationId: getDonations
+      parameters:
+        - name: donor_id
+          in: query
+          schema:
+            type: integer
+        - name: mosque_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/DonationStatusEnum'
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+      responses:
+        '200':
+          description: List of donations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DonationListResponse'
+
+    post:
+      tags:
+        - Donations
+      summary: Create new donation (Donor only)
+      operationId: createDonation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDonationRequest'
+      responses:
+        '201':
+          description: Donation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDonationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /donations/{id}:
+    get:
+      tags:
+        - Donations
+      summary: Get single donation details
+      operationId: getDonation
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Donation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DonationResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /donations/my-history:
+    get:
+      tags:
+        - Donations
+      summary: Get current user's donation history (Donor only)
+      operationId: getMyDonationHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/DonationStatusEnum'
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+      responses:
+        '200':
+          description: Donation history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DonationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /donations/{id}/verify:
+    put:
+      tags:
+        - Donations
+      summary: Verify donation (Admin/Auditor only)
+      operationId: verifyDonation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyDonationRequest'
+      responses:
+        '200':
+          description: Donation verification updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DonationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /donations/{id}/status:
+    put:
+      tags:
+        - Donations
+      summary: Update donation status (Admin only)
+      operationId: updateDonationStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDonationStatusRequest'
+      responses:
+        '200':
+          description: Donation status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DonationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # Need Requests Routes
+  /need-requests:
+    get:
+      tags:
+        - Need Requests
+      summary: Get list of need requests
+      operationId: getNeedRequests
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: mosque_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/NeedRequestStatusEnum'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+      responses:
+        '200':
+          description: List of need requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedRequestListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Need Requests
+      summary: Create new need request (Mosque Admin only)
+      operationId: createNeedRequest
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNeedRequestRequest'
+      responses:
+        '201':
+          description: Need request created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedRequestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /need-requests/my-mosque:
+    get:
+      tags:
+        - Need Requests
+      summary: Get need requests for current user's mosque (Mosque Admin only)
+      operationId: getMyMosqueNeedRequests
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/NeedRequestStatusEnum'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+      responses:
+        '200':
+          description: List of need requests for user's mosque
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedRequestListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No mosque found for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /need-requests/{id}/approve:
+    put:
+      tags:
+        - Need Requests
+      summary: Approve need request (Admin only)
+      operationId: approveNeedRequest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Need request approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedRequestResponse'
+        '400':
+          description: Only pending need requests can be approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /need-requests/{id}/reject:
+    put:
+      tags:
+        - Need Requests
+      summary: Reject need request (Admin only)
+      operationId: rejectNeedRequest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectNeedRequestRequest'
+      responses:
+        '200':
+          description: Need request rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedRequestResponse'
+        '400':
+          description: Only pending need requests can be rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # Tank Images Routes
+  /tank-images:
+    get:
+      tags:
+        - Tank Images
+      summary: Get tank images
+      operationId: getTankImages
+      parameters:
+        - name: mosque_id
+          in: query
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+      responses:
+        '200':
+          description: List of tank images
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TankImageListResponse'
+
+    post:
+      tags:
+        - Tank Images
+      summary: Upload tank image (Mosque Admin only)
+      operationId: uploadTankImage
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadTankImageRequest'
+      responses:
+        '201':
+          description: Tank image uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TankImageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /tank-images/my-mosque:
+    get:
+      tags:
+        - Tank Images
+      summary: Get tank images for current user's mosque (Mosque Admin only)
+      operationId: getMyMosqueTankImages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+      responses:
+        '200':
+          description: List of tank images for user's mosque
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TankImageListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No mosque found for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tank-images/{id}:
+    delete:
+      tags:
+        - Tank Images
+      summary: Delete tank image (Mosque Admin only)
+      operationId: deleteTankImage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Tank image deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                success: true
+                message: Tank image deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Trucks Routes
+  /trucks:
+    get:
+      tags:
+        - Trucks
+      summary: Get list of trucks (Admin/Auditor/Logistics Supervisor)
+      operationId: getTrucks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/TruckStatusEnum'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+      responses:
+        '200':
+          description: List of trucks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TruckListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Trucks
+      summary: Create new truck (Admin only)
+      operationId: createTruck
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTruckRequest'
+      responses:
+        '201':
+          description: Truck created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TruckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /trucks/{id}:
+    get:
+      tags:
+        - Trucks
+      summary: Get single truck details (Admin/Auditor/Logistics Supervisor)
+      operationId: getTruck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Truck details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TruckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Trucks
+      summary: Update truck (Admin only)
+      operationId: updateTruck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTruckRequest'
+      responses:
+        '200':
+          description: Truck updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TruckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /trucks/{id}/location:
+    put:
+      tags:
+        - Trucks
+      summary: Update truck location (Admin/Logistics Supervisor only)
+      operationId: updateTruckLocation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTruckLocationRequest'
+      responses:
+        '200':
+          description: Truck location updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TruckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # Deliveries Routes
+  /deliveries:
+    get:
+      tags:
+        - Deliveries
+      summary: Get list of deliveries
+      operationId: getDeliveries
+      parameters:
+        - name: truck_id
+          in: query
+          schema:
+            type: integer
+        - name: mosque_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/DeliveryStatusEnum'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+      responses:
+        '200':
+          description: List of deliveries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryListResponse'
+
+    post:
+      tags:
+        - Deliveries
+      summary: Create new delivery (Admin/Logistics Supervisor only)
+      operationId: createDelivery
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeliveryRequest'
+      responses:
+        '201':
+          description: Delivery created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /deliveries/{id}:
+    get:
+      tags:
+        - Deliveries
+      summary: Get single delivery details
+      operationId: getDelivery
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Delivery details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /deliveries/{id}/status:
+    put:
+      tags:
+        - Deliveries
+      summary: Update delivery status (Admin/Logistics Supervisor only)
+      operationId: updateDeliveryStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDeliveryStatusRequest'
+      responses:
+        '200':
+          description: Delivery status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /deliveries/{id}/proof:
+    post:
+      tags:
+        - Deliveries
+      summary: Upload delivery proof image (Admin/Logistics Supervisor only)
+      operationId: uploadDeliveryProof
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadDeliveryProofRequest'
+      responses:
+        '200':
+          description: Delivery proof uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # Campaigns Routes
+  /campaigns:
+    get:
+      tags:
+        - Campaigns
+      summary: Get list of campaigns
+      operationId: getCampaigns
+      parameters:
+        - name: active
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+      responses:
+        '200':
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignListResponse'
+
+    post:
+      tags:
+        - Campaigns
+      summary: Create campaign (Admin only)
+      operationId: createCampaign
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCampaignRequest'
+      responses:
+        '201':
+          description: Campaign created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /campaigns/{id}:
+    get:
+      tags:
+        - Campaigns
+      summary: Get single campaign
+      operationId: getCampaign
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Campaign details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Campaigns
+      summary: Update campaign (Admin only)
+      operationId: updateCampaign
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCampaignRequest'
+      responses:
+        '200':
+          description: Campaign updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags:
+        - Campaigns
+      summary: Delete campaign (Admin only)
+      operationId: deleteCampaign
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Campaign deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                success: true
+                message: Campaign deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Ads Routes
+  /ads:
+    get:
+      tags:
+        - Ads
+      summary: Get list of ads
+      operationId: getAds
+      parameters:
+        - name: position
+          in: query
+          schema:
+            type: string
+        - name: active
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+      responses:
+        '200':
+          description: List of ads
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdListResponse'
+
+    post:
+      tags:
+        - Ads
+      summary: Create ad (Admin only)
+      operationId: createAd
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateAdRequest'
+      responses:
+        '201':
+          description: Ad created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /ads/{id}:
+    get:
+      tags:
+        - Ads
+      summary: Get single ad
+      operationId: getAd
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Ad details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Ads
+      summary: Update ad (Admin only)
+      operationId: updateAd
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateAdRequest'
+      responses:
+        '200':
+          description: Ad updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags:
+        - Ads
+      summary: Delete ad (Admin only)
+      operationId: deleteAd
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Ad deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                success: true
+                message: Ad deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Content Texts Routes
+  /content-texts:
+    get:
+      tags:
+        - Content Texts
+      summary: Get all content texts
+      operationId: getContentTexts
+      responses:
+        '200':
+          description: All content texts as key-value map
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentTextMapResponse'
+
+    post:
+      tags:
+        - Content Texts
+      summary: Create or update content text (Admin only)
+      operationId: createContentText
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContentTextRequest'
+      responses:
+        '201':
+          description: Content text created/updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentTextResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /content-texts/{key}:
+    get:
+      tags:
+        - Content Texts
+      summary: Get single content text by key
+      operationId: getContentText
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Content text details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentTextResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Content Texts
+      summary: Update content text (Admin only)
+      operationId: updateContentText
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateContentTextRequest'
+      responses:
+        '200':
+          description: Content text updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentTextResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags:
+        - Content Texts
+      summary: Delete content text (Admin only)
+      operationId: deleteContentText
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Content text deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                success: true
+                message: Content text deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Dashboard Routes
+  /dashboard/stats:
+    get:
+      tags:
+        - Dashboard
+      summary: Get dashboard statistics based on user role
+      operationId: getDashboardStats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/AdminStatsResponse'
+                  - $ref: '#/components/schemas/AuditorStatsResponse'
+                  - $ref: '#/components/schemas/InvestorStatsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /dashboard/activities:
+    get:
+      tags:
+        - Dashboard
+      summary: Get recent activities for dashboard
+      operationId: getDashboardActivities
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: Number of activities to return (1-100)
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Recent activities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /dashboard/donation-activity:
+    get:
+      tags:
+        - Dashboard
+      summary: Get donation activity chart data
+      operationId: getDonationActivity
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          description: Time period for chart data
+          schema:
+            type: string
+            enum: [week, month, year]
+            default: month
+      responses:
+        '200':
+          description: Donation activity chart data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DonationActivityResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Reports Routes
+  /reports/donation-ledger:
+    get:
+      tags:
+        - Reports
+      summary: Get donation ledger for reports (Admin/Auditor only)
+      operationId: getDonationLedger
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: verified
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: Donation ledger with summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DonationLedgerResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /reports/export/pdf:
+    get:
+      tags:
+        - Reports
+      summary: Export donation ledger as PDF (Admin/Auditor only)
+      operationId: exportDonationLedgerPdf
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: verified
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: PDF export URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileExportResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /reports/export/excel:
+    get:
+      tags:
+        - Reports
+      summary: Export donation ledger as Excel (Admin/Auditor only)
+      operationId: exportDonationLedgerExcel
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: verified
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Excel export URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileExportResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Investor Impact Routes
+  /investor-impact/metrics:
+    get:
+      tags:
+        - Investor Impact
+      summary: Get investor impact metrics (Admin/Investor only)
+      operationId: getInvestorImpactMetrics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Investor impact metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestorMetricsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /investor-impact/funnel:
+    get:
+      tags:
+        - Investor Impact
+      summary: Get funnel flow data (Admin/Investor only)
+      operationId: getInvestorFunnel
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Funnel flow data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunnelResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token authentication. Token includes user_id, role, email claims.
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      description: Resource ID
+      schema:
+        type: integer
+
+  responses:
+    Unauthorized:
+      description: Unauthorized - Invalid or missing token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Unauthorized.
+
+    Forbidden:
+      description: Forbidden - Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Unauthorized. Access denied.
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Resource not found.
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+          example:
+            success: false
+            message: Validation error
+            errors:
+              field_name:
+                - The field name is required.
+
+  schemas:
+    # Enums
+    UserRoleEnum:
+      type: string
+      enum: [admin, donor, mosque_admin, auditor, investor, logistics_supervisor]
+
+    NeedLevelEnum:
+      type: string
+      enum: [Low, Medium, High]
+
+    DonationStatusEnum:
+      type: string
+      enum: [pending, completed, failed, cancelled]
+
+    NeedRequestStatusEnum:
+      type: string
+      enum: [pending, approved, rejected, fulfilled]
+
+    TruckStatusEnum:
+      type: string
+      enum: [active, inactive, maintenance]
+
+    DeliveryStatusEnum:
+      type: string
+      enum: [pending, in-transit, delivered, cancelled]
+
+    PaymentMethodEnum:
+      type: string
+      enum: [apple_pay, mada, stc_pay, other]
+
+    # Common Schemas
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: false
+        message:
+          type: string
+      required:
+        - success
+        - message
+
+    MessageResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        message:
+          type: string
+      required:
+        - success
+        - message
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: false
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      required:
+        - success
+        - message
+        - errors
+
+    PaginationMeta:
+      type: object
+      properties:
+        current_page:
+          type: integer
+        from:
+          type: integer
+          nullable: true
+        last_page:
+          type: integer
+        path:
+          type: string
+        per_page:
+          type: integer
+        to:
+          type: integer
+          nullable: true
+        total:
+          type: integer
+
+    PaginationLinks:
+      type: object
+      properties:
+        first:
+          type: string
+          nullable: true
+        last:
+          type: string
+          nullable: true
+        prev:
+          type: string
+          nullable: true
+        next:
+          type: string
+          nullable: true
+
+    # Authentication Schemas
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Username or email
+        password:
+          type: string
+          format: password
+      required:
+        - username
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/UserBasic'
+            token:
+              type: string
+            default_route:
+              type: string
+          required:
+            - user
+            - token
+            - default_route
+      required:
+        - success
+        - data
+
+    RegisterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        username:
+          type: string
+          maxLength: 255
+        password:
+          type: string
+          format: password
+          minLength: 8
+        password_confirmation:
+          type: string
+          format: password
+        phone:
+          type: string
+          maxLength: 20
+          nullable: true
+      required:
+        - name
+        - email
+        - username
+        - password
+        - password_confirmation
+
+    RegisterResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/UserBasic'
+            token:
+              type: string
+          required:
+            - user
+            - token
+      required:
+        - success
+        - data
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            token:
+              type: string
+          required:
+            - token
+      required:
+        - success
+        - data
+
+    ForgotPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+        - email
+
+    ResetPasswordRequest:
+      type: object
+      properties:
+        token:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+        password_confirmation:
+          type: string
+          format: password
+      required:
+        - token
+        - email
+        - password
+        - password_confirmation
+
+    # User Schemas
+    UserBasic:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRoleEnum'
+      required:
+        - id
+        - name
+        - email
+        - username
+        - role
+
+    UserRef:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
+
+    # Mosque Schemas
+    Mosque:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        location:
+          type: string
+        latitude:
+          type: string
+        longitude:
+          type: string
+        capacity:
+          type: integer
+        current_water_level:
+          type: integer
+        required_water_level:
+          type: integer
+        need_level:
+          $ref: '#/components/schemas/NeedLevelEnum'
+        need_score:
+          type: integer
+        description:
+          type: string
+          nullable: true
+        mosque_admin:
+          $ref: '#/components/schemas/UserRef'
+        recent_donations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Donation'
+        recent_deliveries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Delivery'
+
+    MosqueRef:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
+
+    CreateMosqueRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        location:
+          type: string
+          maxLength: 255
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        capacity:
+          type: integer
+          minimum: 1
+        required_water_level:
+          type: integer
+          minimum: 1
+        description:
+          type: string
+          nullable: true
+      required:
+        - name
+        - location
+        - latitude
+        - longitude
+        - capacity
+        - required_water_level
+
+    UpdateMosqueRequest:
+      $ref: '#/components/schemas/CreateMosqueRequest'
+
+    MosqueResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: '#/components/schemas/Mosque'
+      required:
+        - success
+        - data
+
+    MosqueListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Mosque'
+            links:
+              $ref: '#/components/schemas/PaginationLinks'
+            meta:
+              $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - success
+        - data
+
+    # Donation Schemas
+    Donation:
+      type: object
+      properties:
+        id:
+          type: integer
+        donor:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            email:
+              type: string
+              format: email
+        mosque:
+          $ref: '#/components/schemas/MosqueRef'
+        amount:
+          type: string
+          description: Formatted amount with 2 decimal places
+        payment_method:
+          $ref: '#/components/schemas/PaymentMethodEnum'
+        payment_transaction_id:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DonationStatusEnum'
+        verified:
+          type: boolean
+        verified_by:
+          $ref: '#/components/schemas/UserRef'
+        verified_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateDonationRequest:
+      type: object
+      properties:
+        mosque_id:
+          type: integer
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+        payment_method:
+          $ref: '#/components/schemas/PaymentMethodEnum'
+        payment_transaction_id:
+          type: string
+          maxLength: 255
+          nullable: true
+      required:
+        - mosque_id
+        - amount
+        - payment_method
+
+    CreateDonationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            id:
+              type: integer
+            donor_id:
+              type: integer
+            mosque_id:
+              type: integer
+            amount:
+              type: string
+            payment_method:
+              $ref: '#/components/schemas/PaymentMethodEnum'
+            status:
+              $ref: '#/components/schemas/DonationStatusEnum'
+            created_at:
+              type: string
+              format: date-time
+      required:
+        - success
+        - data
+
+    VerifyDonationRequest:
+      type: object
+      properties:
+        verified:
+          type: boolean
+      required:
+        - verified
+
+    UpdateDonationStatusRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/DonationStatusEnum'
+      required:
+        - status
+
+    DonationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: '#/components/schemas/Donation'
+      required:
+        - success
+        - data
+
+    DonationListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Donation'
+            links:
+              $ref: '#/components/schemas/PaginationLinks'
+            meta:
+              $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - success
+        - data
+
+    # Need Request Schemas
+    NeedRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+        mosque_id:
+          type: integer
+        mosque:
+          $ref: '#/components/schemas/MosqueRef'
+        requested_by:
+          $ref: '#/components/schemas/UserRef'
+        water_quantity:
+          type: integer
+        status:
+          $ref: '#/components/schemas/NeedRequestStatusEnum'
+        approved_by:
+          $ref: '#/components/schemas/UserRef'
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+        rejection_reason:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateNeedRequestRequest:
+      type: object
+      properties:
+        mosque_id:
+          type: integer
+        water_quantity:
+          type: integer
+          minimum: 1
+      required:
+        - mosque_id
+        - water_quantity
+
+    RejectNeedRequestRequest:
+      type: object
+      properties:
+        rejection_reason:
+          type: string
+      required:
+        - rejection_reason
+
+    NeedRequestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: '#/components/schemas/NeedRequest'
+      required:
+        - success
+        - data
+
+    NeedRequestListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/NeedRequest'
+            links:
+              $ref: '#/components/schemas/PaginationLinks'
+            meta:
+              $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - success
+        - data
+
+    # Tank Image Schemas
+    TankImage:
+      type: object
+      properties:
+        id:
+          type: integer
+        mosque_id:
+          type: integer
+        image_url:
+          type: string
+          format: uri
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    UploadTankImageRequest:
+      type: object
+      properties:
+        mosque_id:
+          type: integer
+        image:
+          type: string
+          format: binary
+          description: Image file (jpg, jpeg, png, gif, webp, max 5MB)
+        description:
+          type: string
+          nullable: true
+      required:
+        - mosque_id
+        - image
+
+    TankImageResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: '#/components/schemas/TankImage'
+      required:
+        - success
+        - data
+
+    TankImageListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/TankImage'
+            links:
+              $ref: '#/components/schemas/PaginationLinks'
+            meta:
+              $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - success
+        - data
+
+    # Truck Schemas
+    Truck:
+      type: object
+      properties:
+        id:
+          type: integer
+        truck_id:
+          type: string
+        name:
+          type: string
+        capacity:
+          type: integer
+        status:
+          $ref: '#/components/schemas/TruckStatusEnum'
+        current_latitude:
+          type: string
+          nullable: true
+        current_longitude:
+          type: string
+          nullable: true
+        last_location_update:
+          type: string
+          format: date-time
+          nullable: true
+        assigned_driver:
+          $ref: '#/components/schemas/UserRef'
+
+    TruckRef:
+      type: object
+      properties:
+        id:
+          type: integer
+        truck_id:
+          type: string
+        name:
+          type: string
+      required:
+        - id
+        - truck_id
+        - name
+
+    CreateTruckRequest:
+      type: object
+      properties:
+        truck_id:
+          type: string
+          description: Unique truck identifier
+        name:
+          type: string
+          maxLength: 255
+        capacity:
+          type: integer
+          minimum: 1
+      required:
+        - truck_id
+        - name
+        - capacity
+
+    UpdateTruckRequest:
+      type: object
+      properties:
+        truck_id:
+          type: string
+        name:
+          type: string
+          maxLength: 255
+        capacity:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/TruckStatusEnum'
+
+    UpdateTruckLocationRequest:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+      required:
+        - latitude
+        - longitude
+
+    TruckResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: '#/components/schemas/Truck'
+      required:
+        - success
+        - data
+
+    TruckListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Truck'
+            links:
+              $ref: '#/components/schemas/PaginationLinks'
+            meta:
+              $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - success
+        - data
+
+    # Delivery Schemas
+    Delivery:
+      type: object
+      properties:
+        id:
+          type: integer
+        truck:
+          $ref: '#/components/schemas/TruckRef'
+        mosque:
+          $ref: '#/components/schemas/MosqueRef'
+        liters_delivered:
+          type: integer
+        proof_image_url:
+          type: string
+          format: uri
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DeliveryStatusEnum'
+        expected_delivery_date:
+          type: string
+          format: date
+          nullable: true
+        actual_delivery_date:
+          type: string
+          format: date-time
+          nullable: true
+        delivered_by:
+          $ref: '#/components/schemas/UserRef'
+        created_at:
+          type: string
+          format: date-time
+
+    CreateDeliveryRequest:
+      type: object
+      properties:
+        truck_id:
+          type: integer
+        mosque_id:
+          type: integer
+        need_request_id:
+          type: integer
+          nullable: true
+        liters_delivered:
+          type: integer
+          minimum: 1
+        expected_delivery_date:
+          type: string
+          format: date
+      required:
+        - truck_id
+        - mosque_id
+        - liters_delivered
+        - expected_delivery_date
+
+    UpdateDeliveryStatusRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/DeliveryStatusEnum'
+      required:
+        - status
+
+    UploadDeliveryProofRequest:
+      type: object
+      properties:
+        image:
+          type: string
+          format: binary
+          description: Image file (jpg, jpeg, png, gif, webp, max 5MB)
+        delivery_latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          nullable: true
+        delivery_longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required:
+        - image
+
+    DeliveryResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: '#/components/schemas/Delivery'
+      required:
+        - success
+        - data
+
+    DeliveryListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Delivery'
+            links:
+              $ref: '#/components/schemas/PaginationLinks'
+            meta:
+              $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - success
+        - data
+
+    # Campaign Schemas
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CreateCampaignRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        active:
+          type: boolean
+          default: true
+      required:
+        - title
+        - start_date
+        - end_date
+
+    UpdateCampaignRequest:
+      $ref: '#/components/schemas/CreateCampaignRequest'
+
+    CampaignResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: '#/components/schemas/Campaign'
+      required:
+        - success
+        - data
+
+    CampaignListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Campaign'
+            links:
+              $ref: '#/components/schemas/PaginationLinks'
+            meta:
+              $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - success
+        - data
+
+    # Ad Schemas
+    Ad:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        content:
+          type: string
+        position:
+          type: string
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+        link_url:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CreateAdRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        content:
+          type: string
+        position:
+          type: string
+          maxLength: 100
+        image:
+          type: string
+          format: binary
+          description: Image file (jpg, jpeg, png, gif, webp, max 5MB)
+        link_url:
+          type: string
+          maxLength: 500
+          nullable: true
+        active:
+          type: boolean
+          default: true
+      required:
+        - title
+        - content
+        - position
+
+    UpdateAdRequest:
+      $ref: '#/components/schemas/CreateAdRequest'
+
+    AdResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: '#/components/schemas/Ad'
+      required:
+        - success
+        - data
+
+    AdListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Ad'
+            links:
+              $ref: '#/components/schemas/PaginationLinks'
+            meta:
+              $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - success
+        - data
+
+    # Content Text Schemas
+    ContentText:
+      type: object
+      properties:
+        key:
+          type: string
+        value_ar:
+          type: string
+        value_en:
+          type: string
+      required:
+        - key
+        - value_ar
+        - value_en
+
+    CreateContentTextRequest:
+      type: object
+      properties:
+        key:
+          type: string
+        value_ar:
+          type: string
+        value_en:
+          type: string
+      required:
+        - key
+        - value_ar
+        - value_en
+
+    UpdateContentTextRequest:
+      type: object
+      properties:
+        value_ar:
+          type: string
+        value_en:
+          type: string
+      required:
+        - value_ar
+        - value_en
+
+    ContentTextResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: '#/components/schemas/ContentText'
+      required:
+        - success
+        - data
+
+    ContentTextMapResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ContentText'
+      required:
+        - success
+        - data
+
+    # Dashboard Schemas
+    AdminStatsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            total_donations:
+              type: integer
+            water_delivered:
+              type: integer
+            mosques_needing_supply:
+              type: integer
+            active_fleet:
+              type: integer
+          required:
+            - total_donations
+            - water_delivered
+            - mosques_needing_supply
+            - active_fleet
+      required:
+        - success
+        - data
+
+    AuditorStatsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            total_revenue:
+              type: number
+              format: double
+            verified_donations:
+              type: integer
+            pending_verification:
+              type: integer
+            compliance_score:
+              type: integer
+          required:
+            - total_revenue
+            - verified_donations
+            - pending_verification
+            - compliance_score
+      required:
+        - success
+        - data
+
+    InvestorStatsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            total_impact:
+              type: number
+              format: double
+            mosques_served:
+              type: integer
+            water_delivered:
+              type: integer
+            roi:
+              type: number
+              format: double
+          required:
+            - total_impact
+            - mosques_served
+            - water_delivered
+            - roi
+      required:
+        - success
+        - data
+
+    ActivityLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [donation, mosque, delivery, campaign, other]
+        message_ar:
+          type: string
+        message_en:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ActivityListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityLog'
+      required:
+        - success
+        - data
+
+    DonationActivityResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            labels:
+              type: array
+              items:
+                type: string
+            values:
+              type: array
+              items:
+                type: number
+                format: double
+          required:
+            - labels
+            - values
+      required:
+        - success
+        - data
+
+    # Reports Schemas
+    DonationLedgerEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+          format: date
+        donor:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+        amount:
+          type: string
+        verified:
+          type: boolean
+
+    DonationLedgerSummary:
+      type: object
+      properties:
+        total_amount:
+          type: number
+          format: double
+        verified_amount:
+          type: number
+          format: double
+        pending_amount:
+          type: number
+          format: double
+
+    DonationLedgerResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/DonationLedgerEntry'
+            summary:
+              $ref: '#/components/schemas/DonationLedgerSummary'
+          required:
+            - data
+            - summary
+      required:
+        - success
+        - data
+
+    FileExportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        file_url:
+          type: string
+          format: uri
+      required:
+        - success
+        - file_url
+
+    # Investor Impact Schemas
+    InvestorMetricsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          properties:
+            roi:
+              type: number
+              format: double
+            total_impact:
+              type: number
+              format: double
+            mosques_served:
+              type: integer
+            total_donations:
+              type: integer
+            water_delivered:
+              type: integer
+          required:
+            - roi
+            - total_impact
+            - mosques_served
+            - total_donations
+            - water_delivered
+      required:
+        - success
+        - data
+
+    FunnelStage:
+      type: object
+      properties:
+        stage:
+          type: object
+          properties:
+            en:
+              type: string
+            ar:
+              type: string
+          required:
+            - en
+            - ar
+        value:
+          type: integer
+      required:
+        - stage
+        - value
+
+    FunnelResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunnelStage'
+      required:
+        - success
+        - data
