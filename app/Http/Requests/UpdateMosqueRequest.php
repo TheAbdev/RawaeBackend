@@ -40,7 +40,7 @@ class UpdateMosqueRequest extends FormRequest
             'products.*.product_type' => 'sometimes|string|in:dry_food,hot_food,miswak,prayer_mat,prayer_sheets,prayer_towels,quran,quran_holder,tissues',
             'products.*.current_quantity' => 'sometimes|integer|min:0',
             'products.*.required_quantity' => 'sometimes|integer|min:0',
-            'products.*.is_active' => 'sometimes|boolean',
+            'products.*.is_active' => 'sometimes|boolean|default:true',
         ];
     }
 

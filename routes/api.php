@@ -69,6 +69,7 @@ Route::put('/donations/{id}/status', [DonationController::class, 'updateStatus']
 Route::get('/need-requests', [NeedRequestController::class, 'index'])->middleware('auth:api')->name('need-requests.index');
 Route::get('/need-requests/my-mosque', [NeedRequestController::class, 'myMosque'])->middleware('auth:api')->name('need-requests.my-mosque');
 Route::get('/need-requests/mosque/{mosqueId}', [NeedRequestController::class, 'getByMosque'])->middleware('auth:api')->name('need-requests.by-mosque');
+Route::get('/need-requests/{id}', [NeedRequestController::class, 'show'])->middleware('auth:api')->name('need-requests.show');
 Route::post('/need-requests', [NeedRequestController::class, 'store'])->middleware('auth:api')->name('need-requests.store');
 Route::put('/need-requests/{id}/approve', [NeedRequestController::class, 'approve'])->middleware('auth:api')->name('need-requests.approve');
 Route::put('/need-requests/{id}/reject', [NeedRequestController::class, 'reject'])->middleware('auth:api')->name('need-requests.reject');

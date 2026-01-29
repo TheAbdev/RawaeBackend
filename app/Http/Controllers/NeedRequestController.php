@@ -34,17 +34,15 @@ class NeedRequestController extends Controller
     {
         $query = NeedRequest::with(['mosque', 'requester', 'approver', 'supplies']);
 
-        // Filter by mosque_id
         if ($request->has('mosque_id') && $request->mosque_id) {
             $query->where('mosque_id', $request->mosque_id);
         }
 
-        // Filter by status
         if ($request->has('status') && $request->status) {
             $query->where('status', $request->status);
         }
 
-        // Pagination
+
         $perPage = min($request->get('per_page', 15), 100);
         $needRequests = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
@@ -61,7 +59,7 @@ class NeedRequestController extends Controller
      */
     public function myMosque(Request $request): JsonResponse
     {
-        // Check if user is authenticated and is mosque_admin
+
         if (!$request->user() || $request->user()->role !== 'mosque_admin') {
             return response()->json([
                 'success' => false,
@@ -69,7 +67,6 @@ class NeedRequestController extends Controller
             ], 403);
         }
 
-        // Get the mosque associated with the current user
         $mosque = Mosque::where('mosque_admin_id', $request->user()->id)->first();
 
         if (!$mosque) {
@@ -82,12 +79,10 @@ class NeedRequestController extends Controller
         $query = NeedRequest::with(['mosque', 'requester', 'approver', 'supplies'])
             ->where('mosque_id', $mosque->id);
 
-        // Filter by status
         if ($request->has('status') && $request->status) {
             $query->where('status', $request->status);
         }
 
-        // Pagination
         $perPage = min($request->get('per_page', 15), 100);
         $needRequests = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
@@ -104,7 +99,6 @@ class NeedRequestController extends Controller
      */
     public function getByMosque(Request $request, $mosqueId): JsonResponse
     {
-        // Check if user is admin or logistics_supervisor
         $user = $request->user();
         if (!$user || !in_array($user->role, ['admin', 'logistics_supervisor'])) {
             return response()->json([
@@ -113,7 +107,6 @@ class NeedRequestController extends Controller
             ], 403);
         }
 
-        // Check if mosque exists
         $mosque = Mosque::find($mosqueId);
         if (!$mosque) {
             return response()->json([
@@ -125,12 +118,10 @@ class NeedRequestController extends Controller
         $query = NeedRequest::with(['mosque', 'requester', 'approver', 'supplies'])
             ->where('mosque_id', $mosqueId)->where('status','approved');
 
-        // Filter by status
         if ($request->has('status') && $request->status) {
             $query->where('status', $request->status);
         }
 
-        // Pagination
         $perPage = min($request->get('per_page', 15), 100);
         $needRequests = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
@@ -141,13 +132,28 @@ class NeedRequestController extends Controller
     }
 
     /**
+     * Get single need request by ID.
+     *
+     * GET /api/need-requests/{id}
+     */
+    public function show(Request $request, $id): JsonResponse
+    {
+        $needRequest = NeedRequest::with(['mosque', 'requester', 'approver', 'supplies'])
+            ->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => new NeedRequestResource($needRequest),
+        ], 200);
+    }
+
+    /**
      * Create new need request (Mosque Admin only).
      *
      * POST /api/need-requests
      */
     public function store(StoreNeedRequestRequest $request): JsonResponse
     {
-        // Check if user is mosque_admin (already checked in request authorization, but double-check)
         if ($request->user()->role !== 'mosque_admin') {
             return response()->json([
                 'success' => false,
@@ -155,7 +161,6 @@ class NeedRequestController extends Controller
             ], 403);
         }
 
-        // Verify that the mosque belongs to the current user
         $mosque = Mosque::findOrFail($request->mosque_id);
         if ($mosque->mosque_admin_id !== $request->user()->id) {
             return response()->json([
@@ -210,7 +215,6 @@ class NeedRequestController extends Controller
             'NeedRequest'
         );
 
-        // Clear cache
         \App\Helpers\CacheHelper::forgetPatterns(['need_requests_*', 'dashboard_stats_*']);
 
         return response()->json([
@@ -226,7 +230,6 @@ class NeedRequestController extends Controller
      */
     public function approve(Request $request, $id): JsonResponse
     {
-        // Check if user is admin (already checked via middleware, but double-check)
         if ($request->user()->role !== 'admin') {
             return response()->json([
                 'success' => false,
@@ -236,7 +239,6 @@ class NeedRequestController extends Controller
 
         $needRequest = NeedRequest::findOrFail($id);
 
-        // State machine: Only pending requests can be approved
         if ($needRequest->status !== 'pending') {
             return response()->json([
                 'success' => false,
@@ -244,12 +246,11 @@ class NeedRequestController extends Controller
             ], 400);
         }
 
-        // Update status to approved
         $needRequest->update([
             'status' => 'approved',
             'approved_by' => $request->user()->id,
             'approved_at' => now(),
-            'rejection_reason' => null, // Clear rejection reason if it was set
+            'rejection_reason' => null,
         ]);
 
         $needRequest->load(['mosque', 'requester', 'approver']);
@@ -259,7 +260,7 @@ class NeedRequestController extends Controller
             $needRequest->mosque->mosqueAdmin->notify(new NeedRequestStatusNotification($needRequest, 'approved'));
         }*/
 
-        // Log activity
+
         $this->activityLogService->logOther(
             "تم الموافقة على طلب حاجة للمسجد: " . $needRequest->mosque->name,
             "Need request approved for mosque: " . $needRequest->mosque->name,
@@ -268,7 +269,8 @@ class NeedRequestController extends Controller
             'NeedRequest'
         );
 
-        // Clear cache
+
+
         \App\Helpers\CacheHelper::forgetPatterns(['need_requests_*', 'dashboard_stats_*']);
 
         return response()->json([

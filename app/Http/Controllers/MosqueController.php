@@ -26,15 +26,12 @@ class MosqueController extends Controller
     {
         $query = Mosque::query()->with('mosqueAdmin', 'supplies');
 
-        $type = $request->get('type'); // "water" or one of the supply product types
+        $type = $request->get('type');
 
-        // Always select mosque columns explicitly (important when using joins)
         $query->select('mosques.*');
 
-        // Default sort column depends on requested type
         $defaultSortBy = 'need_score';
 
-        // Supported supply product types (should stay in sync with validation rules and migrations)
         $supplyTypes = [
             'dry_food',
             'hot_food',
@@ -48,7 +45,6 @@ class MosqueController extends Controller
         ];
 
         if ($type === null) {
-            // Overall need: max between water need_score and max supplies need_score
             $query->selectRaw("
                 GREATEST(
                     mosques.need_score,
@@ -64,10 +60,8 @@ class MosqueController extends Controller
 
             $defaultSortBy = 'overall_need_score';
         } elseif ($type === 'water') {
-            // Water-only need (existing mosque.need_score)
             $defaultSortBy = 'need_score';
         } elseif (in_array($type, $supplyTypes, true)) {
-            // Need for a specific supply type
             $query
                 ->leftJoin('mosque_supplies as ms', function ($join) use ($type) {
                     $join->on('ms.mosque_id', '=', 'mosques.id')
@@ -103,7 +97,6 @@ class MosqueController extends Controller
             $sortOrder = 'desc';
         }
 
-        // Qualify created_at to avoid ambiguity when joins are used
         $sortColumn = $sortBy === 'created_at' ? 'mosques.created_at' : $sortBy;
 
         $query->orderBy($sortColumn, $sortOrder);
@@ -306,7 +299,7 @@ class MosqueController extends Controller
                             $updateData['required_quantity'] = $productData['required_quantity'];
                         }
                         if (array_key_exists('is_active', $productData)) {
-                            $updateData['is_active'] = $productData['is_active'];
+                            $updateData['is_active'] = true;//$productData['is_active'];
                         }
 
 
