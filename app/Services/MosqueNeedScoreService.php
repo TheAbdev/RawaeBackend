@@ -172,10 +172,13 @@ class MosqueNeedScoreService
             $needLevel = 'Low';
         }
 
-        $mosque->update([
-            'need_score' => $score,
-            'need_level' => $needLevel,
-        ]);
+        // Use withoutEvents to prevent infinite recursion from model events
+        Mosque::withoutEvents(function () use ($mosque, $score, $needLevel) {
+            $mosque->update([
+                'need_score' => $score,
+                'need_level' => $needLevel,
+            ]);
+        });
     }
 }
 

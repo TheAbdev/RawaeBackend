@@ -28,7 +28,7 @@ class UpdateMosqueRequest extends FormRequest
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
             'capacity' => 'required|integer|min:1',
-            'required_water_level' => 'required|integer|min:1',
+            'required_water_level' => 'required|integer|min:0',
             'description' => 'nullable|string',
             'mosque_admin_id' => 'required|integer|exists:users,id',
             'current_water_level' => 'nullable|integer|min:0',

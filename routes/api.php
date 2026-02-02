@@ -16,6 +16,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\InvestorImpactController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ProductController;
 
 /*
 |--------------------------------------------------------------------------
@@ -56,12 +57,20 @@ Route::put('/mosques/{id}', [MosqueController::class, 'update'])->middleware('au
 Route::delete('/mosques/{id}', [MosqueController::class, 'destroy'])->middleware('auth:api')->name('mosques.destroy');
 Route::get('/mosque-admins', [MosqueController::class, 'getMosqueAdmins'])->middleware('auth:api');
 
+// Products routes (Admin only)
+Route::get('/products', [ProductController::class, 'index'])->middleware('auth:api')->name('products.index');
+Route::get('/products/{id}', [ProductController::class, 'show'])->middleware('auth:api')->name('products.show');
+Route::post('/products', [ProductController::class, 'store'])->middleware('auth:api')->name('products.store');
+Route::put('/products/{id}', [ProductController::class, 'update'])->middleware('auth:api')->name('products.update');
+Route::delete('/products/{id}', [ProductController::class, 'destroy'])->middleware('auth:api')->name('products.destroy');
+
 // Donations routes
 Route::get('/donations', [DonationController::class, 'index'])->name('donations.index');
 Route::get('/donations/my-history', [DonationController::class, 'myHistory'])->middleware('auth:api')->name('donations.my-history');
 Route::get('/donations/count', [DonationController::class, 'getStats'])->middleware('auth:api')->name('donations.stats');
 Route::get('/donations/{id}', [DonationController::class, 'show'])->name('donations.show');
 Route::post('/donations', [DonationController::class, 'store'])->middleware('auth:api')->name('donations.store');
+Route::post('/donations/with-products', [DonationController::class, 'storeWithProducts'])->middleware('auth:api')->name('donations.store-with-products');
 Route::put('/donations/{id}/verify', [DonationController::class, 'verify'])->middleware('auth:api')->name('donations.verify');
 Route::put('/donations/{id}/status', [DonationController::class, 'updateStatus'])->middleware('auth:api')->name('donations.update-status');
 

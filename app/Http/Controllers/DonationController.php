@@ -1,17 +1,25 @@
 <?php
-//ngrok http 8000
+
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreDonationRequest;
+use App\Http\Requests\StoreDonationWithProductsRequest;
 use App\Http\Requests\UpdateDonationStatusRequest;
 use App\Http\Requests\VerifyDonationRequest;
 use App\Http\Resources\DonationResource;
 use App\Models\Donation;
+use App\Models\DonationItem;
+use App\Models\Mosque;
+use App\Models\MosqueSupply;
+use App\Models\Product;
 use App\Services\ActivityLogService;
+use App\Services\MosqueNeedScoreService;
+use App\Services\MosqueSupplyNeedScoreService;
 use App\Notifications\NewDonationNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
 class DonationController extends Controller
@@ -147,6 +155,185 @@ class DonationController extends Controller
                 'created_at' => $donation->created_at->toIso8601String(),
             ],
         ], 201);
+    }
+
+    public function storeWithProducts(StoreDonationWithProductsRequest $request): JsonResponse
+    {
+        if ($request->user()->role !== 'donor') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Only donors can create donations.',
+            ], 403);
+        }
+
+        $donationType = $request->donation_type;
+
+        if ($donationType === 'products') {
+            $products = $request->products;
+            $mosqueId = $request->mosque_id;
+            $mosque = Mosque::findOrFail($mosqueId);
+            $totalPrice = 0;
+            $donationItems = [];
+            $suppliesUpdates = []; // Track updates for supplies
+
+            foreach ($products as $item) {
+                // Support both product_id and product_type
+                $product = null;
+                if (isset($item['product_id'])) {
+                    $product = Product::findOrFail($item['product_id']);
+                } elseif (isset($item['product_type'])) {
+                    $product = Product::where('name', $item['product_type'])->first();
+                    if (!$product) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Product type '{$item['product_type']}' not found.",
+                        ], 400);
+                    }
+                }
+
+                if (!$product) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Product ID or product type is required.',
+                    ], 400);
+                }
+
+                if (is_null($product->price)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Product '{$product->name}' has no price set yet.",
+                    ], 400);
+                }
+
+                $itemTotal = $product->price * $item['quantity'];
+                $totalPrice += $itemTotal;
+
+                $donationItems[] = [
+                    'product_id' => $product->id,
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $product->price,
+                    'total_price' => $itemTotal,
+                ];
+
+                // Track supply updates
+                $suppliesUpdates[] = [
+                    'product_type' => $product->name,
+                    'quantity' => $item['quantity'],
+                ];
+            }
+
+            // Create donation with pending status first
+            $donation = Donation::create([
+                'donor_id' => $request->user()->id,
+                'mosque_id' => $mosqueId,
+                'amount' => $totalPrice,
+                'donation_type' => 'products',
+                'payment_method' => $request->payment_method ?? 'system_calculated',
+                'status' => 'pending',
+                'verified' => false,
+            ]);
+
+            // Process payment
+            $paymentResult = $this->processMockPayment($donation);
+
+            if ($paymentResult['success']) {
+                // Update donation status to completed
+                $donation->update([
+                    'status' => 'completed',
+                    'payment_transaction_id' => $paymentResult['transaction_id'],
+                ]);
+
+                // Create donation items
+                foreach ($donationItems as $item) {
+                    DonationItem::create([
+                        'donation_id' => $donation->id,
+                        ...$item,
+                    ]);
+                }
+
+                // Update mosque supplies and water level using direct queries to avoid model events
+                $waterDonated = false;
+                DB::transaction(function () use ($suppliesUpdates, $mosqueId, &$waterDonated) {
+                    foreach ($suppliesUpdates as $update) {
+                        if ($update['product_type'] === 'water') {
+
+                            Mosque::where('id', $mosqueId)
+                                ->increment('current_water_level', $update['quantity']);
+                            $mosque = Mosque::where('id', $mosqueId)->first();
+                            $mosque->required_water_level -= $update['quantity'];
+                            $mosque->save();
+                            $waterDonated = true;
+                        } else {
+                            // Update mosque supplies
+                            MosqueSupply::where('mosque_id', $mosqueId)
+                                ->where('product_type', $update['product_type'])
+                                ->increment('current_quantity', $update['quantity']);
+                        }
+                    }
+                });
+
+                // Refresh mosque and update need scores
+                $mosque->refresh();
+                $mosque->load('supplies');
+
+                // Update need scores manually (not relying on model events)
+                if ($waterDonated) {
+                    app(MosqueNeedScoreService::class)->updateNeedLevel($mosque);
+                }
+                app(MosqueSupplyNeedScoreService::class)->updateSuppliesNeedScores($mosque);
+
+                $donation->refresh();
+                $donation->load(['donor', 'mosque', 'items.product']);
+
+                $this->activityLogService->logDonation(
+                    "تبرع بمنتجات بقيمة " . number_format($donation->amount, 2) . " ريال من " . $donation->donor->name . " لمسجد " . $donation->mosque->name,
+                    "Product donation of " . number_format($donation->amount, 2) . " SAR from " . $donation->donor->name . " to " . $donation->mosque->name,
+                    $request->user(),
+                    $donation->id,
+                    ['amount' => $donation->amount, 'status' => $donation->status, 'items_count' => count($donationItems)]
+                );
+
+                \App\Helpers\CacheHelper::forgetPatterns(['donations_*', 'dashboard_stats_*', 'mosques_*']);
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'id' => $donation->id,
+                        'donor_id' => $donation->donor_id,
+                        'mosque_id' => $donation->mosque_id,
+                        'donation_type' => $donation->donation_type,
+                        'amount' => number_format($donation->amount, 2, '.', ''),
+                        'payment_method' => $donation->payment_method,
+                        'status' => $donation->status,
+                        'items_count' => count($donationItems),
+                        'items' => $donationItems,
+                        'created_at' => $donation->created_at->toIso8601String(),
+                    ],
+                ], 201);
+            } else {
+                // Payment failed
+                $donation->update([
+                    'status' => 'failed',
+                ]);
+
+                $donation->refresh();
+                $donation->load(['donor', 'mosque']);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment failed. Please try again.',
+                    'data' => [
+                        'id' => $donation->id,
+                        'status' => $donation->status,
+                    ],
+                ], 400);
+            }
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Invalid donation type',
+        ], 400);
     }
 
     public function myHistory(Request $request): JsonResponse

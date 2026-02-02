@@ -11,6 +11,11 @@ class Mosque extends Model
     use HasFactory;
 
     /**
+     * Flag to prevent infinite recursion in updated event
+     */
+    private static bool $isUpdatingNeedScore = false;
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
@@ -91,7 +96,7 @@ class Mosque extends Model
     }
 
     /**
-     * Boot method to recalculate need score when deliveries are updated.
+     * Boot method to recalculate need score when water level is updated.
      */
     protected static function boot()
     {
@@ -99,10 +104,20 @@ class Mosque extends Model
 
         // Recalculate need score when mosque is updated
         static::updated(function ($mosque) {
+            // Prevent infinite recursion
+            if (self::$isUpdatingNeedScore) {
+                return;
+            }
+
             // Only recalculate if water level related fields changed
-            if ($mosque->isDirty(['current_water_level', 'required_water_level'])) {
-                $needScoreService = app(MosqueNeedScoreService::class);
-                $needScoreService->updateNeedLevel($mosque);
+            if ($mosque->wasChanged(['current_water_level', 'required_water_level'])) {
+                self::$isUpdatingNeedScore = true;
+                try {
+                    $needScoreService = app(MosqueNeedScoreService::class);
+                    $needScoreService->updateNeedLevel($mosque);
+                } finally {
+                    self::$isUpdatingNeedScore = false;
+                }
             }
         });
     }

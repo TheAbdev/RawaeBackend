@@ -18,6 +18,7 @@ class Donation extends Model
         'donor_id',
         'mosque_id',
         'amount',
+        'donation_type',
         'payment_method',
         'payment_transaction_id',
         'status',
@@ -59,6 +60,14 @@ class Donation extends Model
     public function verifier()
     {
         return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    /**
+     * Get the donation items (products) for this donation.
+     */
+    public function items()
+    {
+        return $this->hasMany(DonationItem::class, 'donation_id');
     }
 }
 

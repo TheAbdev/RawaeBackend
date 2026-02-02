@@ -105,9 +105,11 @@ class MosqueController extends Controller
         $cacheKey = 'mosques_' . md5(json_encode($request->all()) . '_' . $perPage);
 
         /** @var \Illuminate\Contracts\Pagination\LengthAwarePaginator $mosques */
-        $mosques = Cache::remember($cacheKey, 600, function () use ($query, $perPage) {
+      /*   $mosques = Cache::remember($cacheKey, 600, function () use ($query, $perPage) {
             return $query->paginate($perPage);
-        });
+        });*/
+
+        $mosques = $query->paginate($perPage);
 
         $items = $mosques->items();
         $data = array_map(function ($mosque) use ($request) {
