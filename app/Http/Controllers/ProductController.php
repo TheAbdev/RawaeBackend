@@ -11,12 +11,12 @@ class ProductController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-       if (!$request->user() || $request->user()->role !== 'admin') {
+     /*  if (!$request->user() || $request->user()->role !== 'admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized. Only admin can view products.',
             ], 403);
-        }
+        }*/
 
         $products = Product::orderBy('created_at', 'asc')->get();
 
@@ -60,7 +60,7 @@ class ProductController extends Controller
         ]);
 
         $product = Product::create($validated);
-        
+
         // Clear products cache
         Cache::forget('products_map');
 
@@ -89,7 +89,7 @@ class ProductController extends Controller
         ]);
 
         $product->update($validated);
-        
+
         // Clear products cache
         Cache::forget('products_map');
 
@@ -110,7 +110,7 @@ class ProductController extends Controller
 
         $product = Product::findOrFail($id);
         $product->delete();
-        
+
         // Clear products cache
         Cache::forget('products_map');
 

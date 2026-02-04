@@ -58,7 +58,7 @@ Route::delete('/mosques/{id}', [MosqueController::class, 'destroy'])->middleware
 Route::get('/mosque-admins', [MosqueController::class, 'getMosqueAdmins'])->middleware('auth:api');
 
 // Products routes (Admin only)
-Route::get('/products', [ProductController::class, 'index'])->middleware('auth:api')->name('products.index');
+Route::get('/products', [ProductController::class, 'index'])->name('products.index');
 Route::get('/products/{id}', [ProductController::class, 'show'])->middleware('auth:api')->name('products.show');
 Route::post('/products', [ProductController::class, 'store'])->middleware('auth:api')->name('products.store');
 Route::put('/products/{id}', [ProductController::class, 'update'])->middleware('auth:api')->name('products.update');
