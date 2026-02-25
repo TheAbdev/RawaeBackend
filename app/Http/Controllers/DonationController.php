@@ -170,11 +170,12 @@ class DonationController extends Controller
 
         if ($donationType === 'products') {
             $products = $request->products;
-            $mosqueId = $request->mosque_id;
-            $mosque = Mosque::findOrFail($mosqueId);
+            $location = $request->location;
+            $mosqueId = $request->get('mosque_id');
+            $mosque = $mosqueId ? Mosque::find($mosqueId) : null;
             $totalPrice = 0;
             $donationItems = [];
-            $suppliesUpdates = []; // Track updates for supplies
+            $suppliesUpdates = [];
 
             foreach ($products as $item) {
                 // Support both product_id and product_type
@@ -226,6 +227,7 @@ class DonationController extends Controller
             $donation = Donation::create([
                 'donor_id' => $request->user()->id,
                 'mosque_id' => $mosqueId,
+                'location' => $location,
                 'amount' => $totalPrice,
                 'donation_type' => 'products',
                 'payment_method' => $request->payment_method ?? 'system_calculated',
@@ -251,43 +253,51 @@ class DonationController extends Controller
                     ]);
                 }
 
-                // Update mosque supplies and water level using direct queries to avoid model events
+                // Update mosque supplies and water level only when donation is for a specific mosque
                 $waterDonated = false;
-                DB::transaction(function () use ($suppliesUpdates, $mosqueId, &$waterDonated) {
-                    foreach ($suppliesUpdates as $update) {
-                        if ($update['product_type'] === 'water') {
+                if ($mosqueId) {
+                    DB::transaction(function () use ($suppliesUpdates, $mosqueId, &$waterDonated) {
+                        foreach ($suppliesUpdates as $update) {
+                            if ($update['product_type'] === 'water') {
 
-                            Mosque::where('id', $mosqueId)
-                                ->increment('current_water_level', $update['quantity']);
-                            $mosque = Mosque::where('id', $mosqueId)->first();
-                            $mosque->required_water_level -= $update['quantity'];
-                            $mosque->save();
-                            $waterDonated = true;
-                        } else {
-                            // Update mosque supplies
-                            MosqueSupply::where('mosque_id', $mosqueId)
-                                ->where('product_type', $update['product_type'])
-                                ->increment('current_quantity', $update['quantity']);
+                                Mosque::where('id', $mosqueId)
+                                    ->increment('current_water_level', $update['quantity']);
+                                $mosque = Mosque::where('id', $mosqueId)->first();
+                                $mosque->required_water_level -= $update['quantity'];
+                                $mosque->save();
+                                $waterDonated = true;
+                            } else {
+                                MosqueSupply::where('mosque_id', $mosqueId)
+                                    ->where('product_type', $update['product_type'])
+                                    ->increment('current_quantity', $update['quantity']);
+                            }
                         }
-                    }
-                });
-
-                // Refresh mosque and update need scores
-                $mosque->refresh();
-                $mosque->load('supplies');
-
-                // Update need scores manually (not relying on model events)
-                if ($waterDonated) {
-                    app(MosqueNeedScoreService::class)->updateNeedLevel($mosque);
+                    });
                 }
-                app(MosqueSupplyNeedScoreService::class)->updateSuppliesNeedScores($mosque);
+
+                if ($mosqueId && $mosque) {
+                    $mosque->refresh();
+                    $mosque->load('supplies');
+
+                    if ($waterDonated) {
+                        app(MosqueNeedScoreService::class)->updateNeedLevel($mosque);
+                    }
+                    app(MosqueSupplyNeedScoreService::class)->updateSuppliesNeedScores($mosque);
+                }
 
                 $donation->refresh();
                 $donation->load(['donor', 'mosque', 'items.product']);
 
+                $logMessageAr = $mosque
+                    ? "تبرع بمنتجات بقيمة " . number_format($donation->amount, 2) . " ريال من " . $donation->donor->name . " لمسجد " . $donation->mosque->name
+                    : "تبرع بمنتجات بقيمة " . number_format($donation->amount, 2) . " ريال من " . $donation->donor->name . " للموقع: " . ($donation->location ?? '');
+                $logMessageEn = $mosque
+                    ? "Product donation of " . number_format($donation->amount, 2) . " SAR from " . $donation->donor->name . " to " . $donation->mosque->name
+                    : "Product donation of " . number_format($donation->amount, 2) . " SAR from " . $donation->donor->name . " to location: " . ($donation->location ?? '');
+
                 $this->activityLogService->logDonation(
-                    "تبرع بمنتجات بقيمة " . number_format($donation->amount, 2) . " ريال من " . $donation->donor->name . " لمسجد " . $donation->mosque->name,
-                    "Product donation of " . number_format($donation->amount, 2) . " SAR from " . $donation->donor->name . " to " . $donation->mosque->name,
+                    $logMessageAr,
+                    $logMessageEn,
                     $request->user(),
                     $donation->id,
                     ['amount' => $donation->amount, 'status' => $donation->status, 'items_count' => count($donationItems)]
@@ -301,6 +311,7 @@ class DonationController extends Controller
                         'id' => $donation->id,
                         'donor_id' => $donation->donor_id,
                         'mosque_id' => $donation->mosque_id,
+                        'location' => $donation->location,
                         'donation_type' => $donation->donation_type,
                         'amount' => number_format($donation->amount, 2, '.', ''),
                         'payment_method' => $donation->payment_method,

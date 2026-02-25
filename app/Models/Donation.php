@@ -17,6 +17,7 @@ class Donation extends Model
     protected $fillable = [
         'donor_id',
         'mosque_id',
+        'location',
         'amount',
         'donation_type',
         'payment_method',

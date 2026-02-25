@@ -24,11 +24,13 @@ class DonationResource extends JsonResource
                 ];
             }),
             'mosque' => $this->whenLoaded('mosque', function () {
-                return [
+                return $this->mosque ? [
                     'id' => $this->mosque->id,
                     'name' => $this->mosque->name,
-                ];
+                ] : null;
             }),
+            'location' => $this->location,
+            'donation_type' => $this->donation_type,
             'amount' => (string) number_format($this->amount, 2, '.', ''),
             'payment_method' => $this->payment_method,
             'payment_transaction_id' => $this->payment_transaction_id,

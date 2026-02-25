@@ -14,13 +14,13 @@ class StoreDonationWithProductsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'mosque_id' => 'required|integer|exists:mosques,id',
+            'mosque_id' => 'required_if:donation_type,amount|nullable|integer|exists:mosques,id',
+            'location' => 'required_if:donation_type,products|nullable|string|max:500',
             'donation_type' => 'required|in:amount,products',
             'amount' => 'required_if:donation_type,amount|nullable|numeric|min:1',
             'payment_method' => 'required|string|in:apple_pay,mada,stc_pay,other,system_calculated',
             'payment_transaction_id' => 'sometimes|nullable|string',
             'products' => 'required_if:donation_type,products|nullable|array|min:1',
-            // Either product_id or product_type is required for each product
             'products.*.product_id' => 'nullable|integer|exists:products,id|required_without:products.*.product_type',
             'products.*.product_type' => 'nullable|string|required_without:products.*.product_id',
             'products.*.quantity' => 'required_with:products|integer|min:1',
@@ -31,6 +31,8 @@ class StoreDonationWithProductsRequest extends FormRequest
     {
         return [
             'donation_type.required' => 'Donation type is required (amount or products)',
+            'mosque_id.required_if' => 'Mosque is required when donation type is amount',
+            'location.required_if' => 'Location is required when donation type is products',
             'amount.required_if' => 'Amount is required when donation type is amount',
             'payment_method.required' => 'Payment method is required',
             'payment_method.in' => 'Invalid payment method',
